@@ -8,6 +8,8 @@ from PyQt6.QtGui import QIcon
 from PyQt6.QtCore import QThread, pyqtSignal
 from PyQt6.QtWidgets import QApplication, QMainWindow, QPushButton, QTextEdit, QLineEdit, QHBoxLayout, QVBoxLayout, QWidget, QLabel
 
+version = 2
+
 
 def resource_path(relative_path):
     try:
@@ -32,8 +34,8 @@ class WorkerThread(QThread):
         steam_libraries = []
         for drive in drives:
             for root, dirs, _ in os.walk(drive):
-                if "SteamLibrary" in dirs:
-                    steam_libraries.append(os.path.join(root, "SteamLibrary"))
+                if "steamapps" in dirs:
+                    steam_libraries.append(os.path.join(root, "steamapps"))
         return steam_libraries
 
     @staticmethod
@@ -41,7 +43,7 @@ class WorkerThread(QThread):
         game_folders = []
         game_regex = re.compile(r".*Jackbox.*", re.IGNORECASE)
         for library in library_paths:
-            common_path = os.path.join(library, "steamapps", "common")
+            common_path = os.path.join(library, "common")
             if os.path.exists(common_path):
                 for folder in os.listdir(common_path):
                     if game_regex.match(folder):
@@ -124,7 +126,7 @@ class JackboxConfigApp(QMainWindow):
         self.log = QTextEdit()
         self.log.setReadOnly(True)
 
-        self.copyright = QLabel("© Emjoes 2025 v1")
+        self.copyright = QLabel(f"© Emjoes 2025 v{version}")
         self.copyright.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         layout.addLayout(top_layout)
