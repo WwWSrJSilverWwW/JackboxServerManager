@@ -6,9 +6,9 @@ import ctypes
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QIcon
 from PyQt6.QtCore import QThread, pyqtSignal
-from PyQt6.QtWidgets import QApplication, QMainWindow, QPushButton, QTextEdit, QLineEdit, QHBoxLayout, QVBoxLayout, QWidget, QLabel
+from PyQt6.QtWidgets import (QApplication, QMainWindow, QPushButton, QTextEdit, QLineEdit, QHBoxLayout, QVBoxLayout, QGridLayout, QWidget, QLabel, QFileDialog, QCheckBox)
 
-version = 2
+version = 3
 
 
 def resource_path(relative_path):
@@ -23,13 +23,16 @@ class WorkerThread(QThread):
     log_signal = pyqtSignal(str)
     done_signal = pyqtSignal(int)
 
-    def __init__(self, action, server_url):
+    def __init__(self, action, server_url, custom_path=None):
         super().__init__()
         self.action = action
         self.server_url = server_url
+        self.custom_path = custom_path
 
-    @staticmethod
-    def find_steam_libraries():
+    def find_steam_libraries(self):
+        if self.custom_path is not None:
+            return [os.path.join(self.custom_path, "steamapps")]
+
         drives = [f"{chr(d)}:/" for d in range(65, 91) if os.path.exists(f"{chr(d)}:/")]
         steam_libraries = []
         for drive in drives:
@@ -99,27 +102,56 @@ class JackboxConfigApp(QMainWindow):
         super().__init__()
         self.setWindowTitle("Jackbox Server Manager")
         self.setWindowIcon(QIcon(resource_path("jbg-icon.ico")))
-        self.setGeometry(100, 100, 400, 450)
+        self.setGeometry(100, 100, 450, 500)
         self.server_url = "rujackbox.vercel.app"
+        self.custom_path = None
+        self.elem_height = 28
         self.init_ui()
 
     def init_ui(self):
         layout = QVBoxLayout()
 
-        top_layout = QHBoxLayout()
-        button_layout = QHBoxLayout()
+        grid_layout = QGridLayout()
+
+        self.server_label = QLabel("Сервер:")
+        self.server_label.setMinimumHeight(self.elem_height)
 
         self.server_input = QLineEdit()
         self.server_input.setText(self.server_url)
+        self.server_input.setMinimumHeight(self.elem_height)
+
+        self.auto_path_checkbox = QCheckBox("Автоматически определить путь до папки Steam (может быть дольше)")
+        self.auto_path_checkbox.setChecked(False)
+        self.auto_path_checkbox.stateChanged.connect(self.toggle_path_input)
+
+        self.path_label = QLabel("Папка:")
+        self.path_label.setMinimumHeight(self.elem_height)
+
+        self.path_input = QLineEdit()
+        self.path_input.setPlaceholderText("Выберите папку Steam...")
+        self.path_input.setMinimumHeight(self.elem_height)
+
+        self.browse_button = QPushButton("...")
+        self.browse_button.clicked.connect(self.browse_path)
+        self.browse_button.setMinimumHeight(self.elem_height)
+        self.browse_button.setMaximumWidth(40)
+
+        grid_layout.addWidget(QLabel("Сервер:"), 0, 0)
+        grid_layout.addWidget(self.server_input, 0, 1, 1, 2)
+
+        grid_layout.addWidget(self.path_label, 1, 0)
+        grid_layout.addWidget(self.path_input, 1, 1)
+        grid_layout.addWidget(self.browse_button, 1, 2)
 
         self.patch_button = QPushButton("Прошить")
         self.patch_button.clicked.connect(self.start_patch)
+        self.patch_button.setMinimumHeight(self.elem_height)
 
         self.unpatch_button = QPushButton("Сбросить")
         self.unpatch_button.clicked.connect(self.start_unpatch)
+        self.unpatch_button.setMinimumHeight(self.elem_height)
 
-        top_layout.addWidget(QLabel("Сервер:"))
-        top_layout.addWidget(self.server_input)
+        button_layout = QHBoxLayout()
         button_layout.addWidget(self.patch_button)
         button_layout.addWidget(self.unpatch_button)
 
@@ -129,7 +161,8 @@ class JackboxConfigApp(QMainWindow):
         self.copyright = QLabel(f"© Emjoes 2025 v{version}")
         self.copyright.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        layout.addLayout(top_layout)
+        layout.addLayout(grid_layout)
+        layout.addWidget(self.auto_path_checkbox)
         layout.addLayout(button_layout)
         layout.addWidget(self.log)
         layout.addWidget(self.copyright)
@@ -138,14 +171,30 @@ class JackboxConfigApp(QMainWindow):
         container.setLayout(layout)
         self.setCentralWidget(container)
 
+    def toggle_path_input(self):
+        height = 0 if self.auto_path_checkbox.isChecked() else self.elem_height
+        self.path_label.setMinimumHeight(height)
+        self.path_label.setMaximumHeight(height)
+        self.path_input.setMinimumHeight(height)
+        self.path_input.setMaximumHeight(height)
+        self.browse_button.setMinimumHeight(height)
+        self.browse_button.setMaximumHeight(height)
+
+    def browse_path(self):
+        selected_path = QFileDialog.getExistingDirectory(self, "Выберите папку Steam")
+        if selected_path:
+            self.path_input.setText(selected_path)
+
     def log_message(self, message):
         self.log.append(message)
 
     def start_patch(self):
         self.server_url = self.server_input.text()
+        self.custom_path = None if self.auto_path_checkbox.isChecked() else self.path_input.text()
         self.start_worker("patch")
 
     def start_unpatch(self):
+        self.custom_path = None if self.auto_path_checkbox.isChecked() else self.path_input.text()
         self.start_worker("unpatch")
 
     def start_worker(self, action):
@@ -153,7 +202,7 @@ class JackboxConfigApp(QMainWindow):
         self.unpatch_button.setEnabled(False)
         self.log.clear()
 
-        self.worker = WorkerThread(action, self.server_url)
+        self.worker = WorkerThread(action, self.server_url, custom_path=self.custom_path)
         self.worker.log_signal.connect(self.log_message)
         self.worker.done_signal.connect(self.on_worker_done)
         self.worker.start()
